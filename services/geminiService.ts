@@ -1,7 +1,19 @@
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import { DailySummaryData, GroundingSource } from "../types";
 
-const API_KEY = process.env.API_KEY || '';
+// Safely retrieve API Key to prevent "ReferenceError: process is not defined" in browser environments
+const getApiKey = () => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Silently fail if process is not defined
+  }
+  return '';
+};
+
+const API_KEY = getApiKey();
 
 // System instruction defining SparkLog's persona in Chinese
 const SYSTEM_INSTRUCTION = `
@@ -36,6 +48,7 @@ class GeminiService {
   private modelId = 'gemini-2.5-flash'; 
 
   constructor() {
+    // Initialize with safe key. If empty, requests will fail but app won't crash on load.
     this.ai = new GoogleGenAI({ apiKey: API_KEY });
   }
 
@@ -55,6 +68,13 @@ class GeminiService {
 
   // Send a message (text + optional image) to the chat
   async sendMessage(text: string, imageBase64?: string): Promise<{ text: string, sources: GroundingSource[] }> {
+    if (!API_KEY) {
+        return { 
+            text: "📡 呼叫失败！似乎没有配置 API Key。请检查环境变量设置。", 
+            sources: [] 
+        };
+    }
+
     const chat = this.getChat();
     
     let responseText = "";
@@ -90,7 +110,7 @@ class GeminiService {
 
     } catch (error) {
       console.error("Error sending message:", error);
-      responseText = "脑路有点堵车😵‍💫。刚才那句没听清，再说一遍？";
+      responseText = "脑路有点堵车😵‍💫。网络可能不太好，或者那个链接我读不到。再试一次？";
     }
 
     return { text: responseText, sources };
@@ -98,6 +118,10 @@ class GeminiService {
 
   // Trigger the Daily Wrap Up specifically
   async generateDailySummary(): Promise<DailySummaryData> {
+    if (!API_KEY) {
+        throw new Error("API Key Missing");
+    }
+
     const chat = this.getChat();
     
     // Prompt engineered to force specific JSON structure and Chinese content
