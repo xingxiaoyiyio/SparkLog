@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useRef, useEffect, ChangeEvent, KeyboardEvent } from 'react';
 import { Send, Image as ImageIcon, X, Loader2 } from 'lucide-react';
 
@@ -108,15 +110,6 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, isLoading }
             rows={1}
             style={{ overflowY: text.length > 100 ? 'auto' : 'hidden' }} // Show scroll only if long
             />
-            <style>{`
-                .scrollbar-hide::-webkit-scrollbar {
-                    display: none;
-                }
-                .scrollbar-hide {
-                    -ms-overflow-style: none;
-                    scrollbar-width: none;
-                }
-            `}</style>
             
             <button
             onClick={handleSend}

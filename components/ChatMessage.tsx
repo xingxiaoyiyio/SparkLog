@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message, Role } from '../types';
@@ -11,17 +13,11 @@ interface ChatMessageProps {
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
   const isUser = message.role === Role.USER;
 
-  // Auto-linkify user text if no markdown links detected
-  // This ensures raw URLs pasted by the user become clickable
   const formattedText = React.useMemo(() => {
     if (!isUser) return message.text;
-    
-    // If text already contains markdown links (e.g. [title](url)), assume user (or system) formatted it intentionally
     if (/\[.*?\]\(.*?\)/.test(message.text)) return message.text;
 
-    // Replace raw URLs with markdown links
     return message.text.replace(/(https?:\/\/[^\s]+)/g, (match) => {
-        // Strip common trailing punctuation from URL to avoid including "." or "," in the link
         const url = match.replace(/[.,;!?)]+$/, '');
         const suffix = match.slice(url.length);
         return `[${url}](${url})${suffix}`;
@@ -32,7 +28,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fade-in-up group`}>
       <div className={`flex max-w-[95%] md:max-w-[80%] gap-3 items-end ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         
-        {/* Avatar */}
         <div className={`flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center shadow-sm border mb-1 ${
           isUser 
             ? 'bg-gradient-to-br from-aurora-purple to-violet-600 border-aurora-purple text-white' 
@@ -41,10 +36,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
           {isUser ? <User size={18} /> : <Bot size={18} />}
         </div>
 
-        {/* Message Group (Bubble + Delete Btn) */}
         <div className={`flex gap-2 items-center ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
             
-            {/* Bubble */}
             <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} relative max-w-full`}>
                 <div className={`px-5 py-3.5 shadow-sm text-sm md:text-base leading-relaxed overflow-hidden border backdrop-blur-sm ${
                     isUser 
@@ -79,7 +72,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
                     </div>
                 </div>
 
-                {/* Grounding Sources (Citations) */}
                 {message.groundingSources && message.groundingSources.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2 max-w-full">
                         {message.groundingSources.map((source, idx) => (
@@ -99,12 +91,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
 
                 <div className="flex items-center gap-2 mt-1.5 opacity-70">
                     <span className="text-[10px] font-mono text-slate-400 px-1">
-                        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                 </div>
             </div>
 
-            {/* Delete Button */}
             <button
                 onClick={(e) => {
                     e.stopPropagation();

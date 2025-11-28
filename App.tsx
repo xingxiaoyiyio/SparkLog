@@ -227,7 +227,7 @@ export default function App() {
       }
 
       // 3. Normal Chat Interaction
-      const response = await geminiService.sendMessage(text, imageBase64);
+      const response = await geminiService.sendMessage(text, messages, imageBase64);
       
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),

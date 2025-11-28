@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { DailySummaryData } from '../types';
 import { CheckCircle2, Lightbulb, Calendar, Sparkles, PieChart, List, X, ChevronDown, ChevronUp } from 'lucide-react';
@@ -17,7 +19,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm animate-fade-in">
       <div className="bg-white/90 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col relative border border-white/60">
         
-        {/* Close Button */}
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 z-20 bg-white/50 hover:bg-white text-slate-500 rounded-full p-2 transition-all shadow-sm backdrop-blur-md border border-slate-200/50"
@@ -25,7 +26,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
            <X size={20} />
         </button>
 
-        {/* Mood Header - Aurora Style */}
         <div 
             className="relative h-48 w-full flex-shrink-0 flex flex-col items-center justify-center p-6 text-center overflow-hidden"
             style={{ 
@@ -33,7 +33,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
                 borderBottom: `1px solid ${data.moodColor}20`
             }}
         >
-          {/* Decorative gradients */}
           <div className="absolute top-[-50%] left-[-20%] w-60 h-60 rounded-full bg-aurora-purple/10 blur-3xl"></div>
           <div className="absolute bottom-[-30%] right-[-10%] w-40 h-40 rounded-full bg-aurora-green/10 blur-3xl"></div>
 
@@ -49,10 +48,8 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-8 space-y-8 bg-gradient-to-b from-white to-slate-50/80">
           
-          {/* Highlight (Point-by-point) */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold text-aurora-purple uppercase tracking-widest flex items-center gap-2 font-mono opacity-90">
                 <Sparkles size={14} />
@@ -68,7 +65,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
             </ul>
           </div>
 
-          {/* Stats Section */}
           {data.stats && data.stats.length > 0 && (
              <div className="space-y-4">
                  <h3 className="text-xs font-bold text-aurora-green uppercase tracking-widest flex items-center gap-2 font-mono opacity-90">
@@ -88,7 +84,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
 
           <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
-          {/* Action Items */}
           <div className="space-y-4">
              <h3 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2 font-mono opacity-90">
                 <CheckCircle2 size={14} />
@@ -108,7 +103,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
              )}
           </div>
 
-          {/* Inspirations */}
           <div className="space-y-4">
              <h3 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2 font-mono opacity-90">
                 <Lightbulb size={14} />
@@ -129,7 +123,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
 
           <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
-          {/* Fragment Log (Raw Details) */}
           <div className="space-y-4">
              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 font-mono">
                 <List size={14} />
@@ -165,7 +158,6 @@ export const DailySummary: React.FC<DailySummaryProps> = ({ data, onClose }) => 
 
         </div>
 
-        {/* Decorative Footer */}
         <div className="h-1.5 bg-gradient-to-r from-aurora-purple via-white to-aurora-green"></div>
       </div>
     </div>
