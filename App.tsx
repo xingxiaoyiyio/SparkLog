@@ -11,7 +11,7 @@ import { Sparkles, ScrollText, History, Eraser } from 'lucide-react';
 const INITIAL_MESSAGE: Message = {
   id: 'init-1',
   role: Role.MODEL,
-  text: "嘿！👋 今天过得怎么样？甩个链接、发张照片，或者单纯吐槽一下工作。我准备好啦！",
+  text: "嘿！👋 今天过得怎么样？随时跟我记个流水账，或者单纯吐槽一下。我准备好啦！",
   timestamp: new Date()
 };
 
