@@ -49,13 +49,44 @@ export async function POST(req: Request) {
     }
     `;
 
+    // 重试函数
+    async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, delay: number = 1000): Promise<T> {
+      let lastError: Error | null = null;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (error) {
+          lastError = error as Error;
+          console.warn(`API调用尝试 ${attempt + 1} 失败，${delay}ms后重试:`, error);
+          
+          // 只对网络错误和服务暂时不可用的错误进行重试
+          if (!lastError.message.includes('network') && 
+              !lastError.message.includes('timeout') && 
+              !lastError.message.includes('temporarily unavailable') &&
+              !lastError.message.includes('502') &&
+              !lastError.message.includes('503') &&
+              !lastError.message.includes('504')) {
+            throw error; // 认证错误等非临时性错误不重试
+          }
+          
+          // 指数退避策略
+          if (attempt < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(1.5, attempt)));
+          }
+        }
+      }
+      
+      throw lastError || new Error('所有重试都失败了');
+    }
+
     const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     // 简化调用，移除responseMimeType配置
     // 在新版本中，可以在prompt中明确要求返回JSON格式
-    const result = await model.generateContent({
+    const result = await withRetry(() => model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }]
-    });
+    }));
 
     const jsonStr = result.response.text().trim();
     // Google Generative AI usually returns pure JSON with responseMimeType, but strip code blocks just in case
@@ -74,6 +105,50 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error("Server Summary Error:", error);
-    return NextResponse.json({ error: "Summary generation failed" }, { status: 500 });
+    
+    // 提供更详细的错误诊断
+    let errorMessage = "Summary generation failed";
+    let errorType = "unknown";
+    
+    if (error instanceof Error) {
+      // 根据错误类型提供更具体的诊断
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        errorMessage = "API Key配置错误或已过期，请检查GEMINI_API_KEY";
+        errorType = "authentication";
+      } else if (error.message.includes('403')) {
+        errorMessage = "API访问权限受限，请检查API Key权限设置";
+        errorType = "permission";
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        errorMessage = "网络连接问题，请检查网络设置或稍后重试";
+        errorType = "network";
+      } else if (error.message.includes('quota') || error.message.includes('limit')) {
+        errorMessage = "API使用配额已用尽，请检查API使用情况";
+        errorType = "quota";
+      } else if (error.message.includes('JSON')) {
+        errorMessage = "JSON解析错误，请检查响应格式";
+        errorType = "parsing";
+      } else {
+        errorMessage = `AI服务错误: ${error.message}`;
+        errorType = "service";
+      }
+    }
+    
+    return NextResponse.json(
+      { 
+        error: errorMessage, 
+        errorType, 
+        diagnostic: process.env.NODE_ENV === 'development' ? String(error) : undefined,
+        // 提供一个默认的空总结，以便前端可以继续运行
+        highlight: [],
+        actionItems: [],
+        inspirations: [],
+        stats: [],
+        moodEmoji: "😐",
+        moodColor: "#808080",
+        date: new Date().toLocaleDateString('zh-CN'),
+        rawLog: []
+      }, 
+      { status: 500 }
+    );
   }
 }

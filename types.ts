@@ -9,6 +9,13 @@ export interface GroundingSource {
   title: string;
 }
 
+export interface ChatResponse {
+  text: string;
+  sources: GroundingSource[];
+  error?: string;
+  diagnostic?: string;
+}
+
 export interface Message {
   id: string;
   role: Role;
@@ -36,6 +43,8 @@ export interface DailySummaryData {
   stats?: DailyStats[]; 
   fragmentLog?: string[]; // Deprecated, use rawLog
   rawLog?: string[]; // New: List of actual user inputs
+  error?: string; // 添加错误信息字段
+  errorType?: string; // 添加错误类型字段
 }
 
 export type ChatStatus = 'idle' | 'thinking' | 'generating_summary';

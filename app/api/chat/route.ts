@@ -67,6 +67,37 @@ export async function POST(req: Request) {
         parts: [{ text: msg.text || msg.content }] // 支持text或content字段
       }));
 
+    // 重试函数
+    async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, delay: number = 1000): Promise<T> {
+      let lastError: Error | null = null;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (error) {
+          lastError = error as Error;
+          console.warn(`API调用尝试 ${attempt + 1} 失败，${delay}ms后重试:`, error);
+          
+          // 只对网络错误和服务暂时不可用的错误进行重试
+          if (!lastError.message.includes('network') && 
+              !lastError.message.includes('timeout') && 
+              !lastError.message.includes('temporarily unavailable') &&
+              !lastError.message.includes('502') &&
+              !lastError.message.includes('503') &&
+              !lastError.message.includes('504')) {
+            throw error; // 认证错误等非临时性错误不重试
+          }
+          
+          // 指数退避策略
+          if (attempt < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(1.5, attempt)));
+          }
+        }
+      }
+      
+      throw lastError || new Error('所有重试都失败了');
+    }
+
     const model = ai.getGenerativeModel({
       model: 'gemini-2.5-flash'
     });
@@ -88,15 +119,17 @@ export async function POST(req: Request) {
     const latestMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
     
     let result;
+    
+    // 使用重试机制发送消息
     if (image) {
       // Multimodal message
-      result = await chat.sendMessage([
+      result = await withRetry(() => chat.sendMessage([
         { inlineData: { mimeType: 'image/jpeg', data: image } },
         { text: latestMessage || "看看这张图！" }
-      ]);
+      ]));
     } else {
       // Text message
-      result = await chat.sendMessage(latestMessage);
+      result = await withRetry(() => chat.sendMessage(latestMessage));
     }
 
     const responseText = result.response.text() || "";
@@ -109,6 +142,34 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error("Server Chat Error:", error);
-    return NextResponse.json({ text: "AI Service Error" }, { status: 500 });
+    
+    // 提供更详细的错误诊断
+    let errorMessage = "AI Service Error";
+    let errorType = "unknown";
+    
+    if (error instanceof Error) {
+      // 根据错误类型提供更具体的诊断
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        errorMessage = "API Key配置错误或已过期，请检查GEMINI_API_KEY";
+        errorType = "authentication";
+      } else if (error.message.includes('403')) {
+        errorMessage = "API访问权限受限，请检查API Key权限设置";
+        errorType = "permission";
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        errorMessage = "网络连接问题，请检查网络设置或稍后重试";
+        errorType = "network";
+      } else if (error.message.includes('quota') || error.message.includes('limit')) {
+        errorMessage = "API使用配额已用尽，请检查API使用情况";
+        errorType = "quota";
+      } else {
+        errorMessage = `AI服务错误: ${error.message}`;
+        errorType = "service";
+      }
+    }
+    
+    return NextResponse.json(
+      { text: errorMessage, errorType, diagnostic: process.env.NODE_ENV === 'development' ? String(error) : undefined }, 
+      { status: 500 }
+    );
   }
 }
