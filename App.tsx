@@ -5,7 +5,7 @@ import { DailySummary } from './components/DailySummary';
 import { HistoryView } from './components/HistoryView';
 import { geminiService } from './services/geminiService';
 import { Message, Role, ChatStatus, DailySummaryData } from './types';
-import { Sparkles, ScrollText, History, Trash2, Eraser } from 'lucide-react';
+import { Sparkles, ScrollText, History, Eraser } from 'lucide-react';
 
 // Initial message in Chinese
 const INITIAL_MESSAGE: Message = {
@@ -22,7 +22,24 @@ interface HistoryItem {
 }
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
+  // 1. Initialize messages from LocalStorage (Persistence)
+  const [messages, setMessages] = useState<Message[]>(() => {
+      try {
+          const saved = localStorage.getItem('sparklog_current_chat');
+          if (saved) {
+              const parsed = JSON.parse(saved);
+              // Rehydrate Date objects from strings
+              return parsed.map((m: any) => ({
+                  ...m,
+                  timestamp: new Date(m.timestamp)
+              }));
+          }
+      } catch (e) {
+          console.error("Failed to load chat persistence", e);
+      }
+      return [INITIAL_MESSAGE];
+  });
+
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [showSummary, setShowSummary] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -42,6 +59,11 @@ export default function App() {
     scrollToBottom();
   }, [messages, status]);
 
+  // 2. Persist messages to LocalStorage whenever they change
+  useEffect(() => {
+      localStorage.setItem('sparklog_current_chat', JSON.stringify(messages));
+  }, [messages]);
+
   // Load history from local storage on mount
   useEffect(() => {
       const savedHistory = localStorage.getItem('sparklog_history');
@@ -53,38 +75,71 @@ export default function App() {
               console.error("Failed to parse history", e);
           }
       }
+      
+      // Initialize chat date tracker if missing
+      if (!localStorage.getItem('sparklog_chat_date')) {
+          localStorage.setItem('sparklog_chat_date', new Date().toDateString());
+      }
   }, []);
 
-  // Time-based Automation Logic (0:00 Greeting, 23:59 Summary)
+  // Time-based Automation Logic (0:00 Reset/Greeting, 23:59 Summary)
   useEffect(() => {
     const checkTimeEvents = () => {
         const now = new Date();
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
         const todayStr = now.toDateString();
+        const storedDate = localStorage.getItem('sparklog_chat_date');
 
-        // 1. New Day Greeting (0:00)
-        const lastGreetedDate = localStorage.getItem('lastGreetedDate');
-        if (currentHour === 0 && currentMinute === 0 && lastGreetedDate !== todayStr) {
-            const greetingMsg: Message = {
+        // 1. New Day Logic (Date Rollover)
+        // If the stored date is different from today, it means it's a new day (0:00 or app opened next day)
+        if (storedDate && storedDate !== todayStr) {
+            console.log("New day detected. Resetting chat...");
+            
+            // a. Retrieve previous history to find To-Dos
+            let pendingTodos: string[] = [];
+            const savedHistoryStr = localStorage.getItem('sparklog_history');
+            if (savedHistoryStr) {
+                try {
+                    const parsedHistory: HistoryItem[] = JSON.parse(savedHistoryStr);
+                    if (parsedHistory.length > 0) {
+                        // Get the most recent entry (yesterday's summary)
+                        const lastEntry = parsedHistory[parsedHistory.length - 1];
+                        if (lastEntry.data.actionItems && lastEntry.data.actionItems.length > 0) {
+                            pendingTodos = lastEntry.data.actionItems;
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            // b. Generate New Greeting
+            let greetingText = "又是新的一天！☀️ 昨天过得还好吗？";
+            if (pendingTodos.length > 0) {
+                greetingText += "\n\n📋 昨天的待办事项别忘啦：\n" + pendingTodos.map(t => `- ${t}`).join('\n');
+                greetingText += "\n\n今天有什么新计划吗？";
+            } else {
+                greetingText += " 今天有什么新计划，或者只是想记录点什么？";
+            }
+
+            const newGreetingMsg: Message = {
                 id: Date.now().toString(),
                 role: Role.MODEL,
-                text: "又是新的一天！☀️ 昨天过得还好吗？今天有什么新计划，或者只是想记录点什么？",
+                text: greetingText,
                 timestamp: new Date()
             };
-            setMessages(prev => [...prev, greetingMsg]);
-            localStorage.setItem('lastGreetedDate', todayStr);
-            // Reset auto-gen flag for the new day
-            setAutoGeneratedDate(null);
+
+            // c. Delete previous day's conversations (Reset State)
+            setMessages([newGreetingMsg]);
+            
+            // d. Update stored date
+            localStorage.setItem('sparklog_chat_date', todayStr);
+            localStorage.setItem('lastGreetedDate', todayStr); // Sync legacy flag
+            setAutoGeneratedDate(null); // Reset auto-gen flag
         }
 
         // 2. Auto Summary (23:59)
         // Check if it's 23:59, we haven't generated yet today, and there are records
         if (currentHour === 23 && currentMinute === 59 && autoGeneratedDate !== todayStr) {
-             // We need to check if we should generate. 
-             // We can't access 'messages' state directly inside this closure accurately if not in dependency array,
-             // but adding messages to dependency would re-run interval too often.
-             // We will trigger a state check via a function.
              attemptAutoSummary(todayStr);
         }
     };
@@ -101,13 +156,7 @@ export default function App() {
 
             // If we have logs and haven't generated yet
             if (userLogsToday.length > 0) {
-                 // Trigger summary generation logic
-                 // Since we are in a state update callback, we need to be careful. 
-                 // We'll set a flag or call the function outside.
-                 // Actually, calling handleGenerateSummary from here is tricky due to async/state.
-                 // Let's use a timeout to break out of the state updater
                  setTimeout(() => {
-                    // Double check state inside the timeout (handled by handleGenerateSummary's own checks)
                      handleGenerateSummary(false, true); 
                  }, 0);
                  
@@ -118,9 +167,13 @@ export default function App() {
         });
     };
 
-    const intervalId = setInterval(checkTimeEvents, 60000); // Check every minute
+    const intervalId = setInterval(checkTimeEvents, 10000); // Check every 10 seconds for more precision
+    
+    // Run check immediately on mount to handle "opened next day" scenario
+    checkTimeEvents();
+
     return () => clearInterval(intervalId);
-  }, [autoGeneratedDate]);
+  }, [autoGeneratedDate]); // Dependency on autoGen flag
 
 
   const saveToHistory = (data: DailySummaryData) => {
@@ -148,6 +201,8 @@ export default function App() {
       if (window.confirm("确定要清空当前的聊天记录吗？(历史日记不会被删除)")) {
           setMessages([INITIAL_MESSAGE]);
           setStatus('idle');
+          // Update the date tracker to today so we don't trigger "New Day" logic immediately again if date was stale
+          localStorage.setItem('sparklog_chat_date', new Date().toDateString());
       }
   };
 
@@ -256,7 +311,6 @@ export default function App() {
         setStatus('idle');
         
         if (isAutoTrigger) {
-             // For auto trigger, we might just want to save it (done above) and maybe notify user next time or just append a message
              setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: Role.MODEL,
@@ -286,79 +340,83 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-2xl mx-auto bg-transparent relative border-x border-white/20 shadow-2xl">
+    <div className="flex flex-col h-screen w-full bg-transparent relative border-x border-white/20 shadow-2xl">
       {/* Header */}
-      <header className="bg-white/60 backdrop-blur-xl sticky top-0 z-10 px-6 py-4 flex items-center justify-between border-b border-white/40">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-aurora text-white p-2.5 rounded-xl shadow-lg shadow-aurora-purple/20">
-            <Sparkles size={20} />
-          </div>
-          <div>
-            <h1 className="font-bold text-slate-800 text-lg leading-tight tracking-tight font-sans">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-aurora-purple to-aurora-green">SparkLog</span>
-            </h1>
-            <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">AI Fragment Diary</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-            <button 
-                onClick={handleClearChat}
-                disabled={status !== 'idle' || messages.length <= 1}
-                className={`p-2.5 rounded-xl transition-all border border-transparent ${
-                    status !== 'idle' || messages.length <= 1 
-                    ? 'text-slate-300 cursor-not-allowed' 
-                    : 'text-slate-400 hover:text-red-500 hover:bg-white hover:border-red-100 hover:shadow-sm'
-                }`}
-                title="清空当前对话"
-            >
-                <Eraser size={20} />
-            </button>
-            <div className="w-px h-8 bg-slate-200 mx-1 self-center"></div>
-            <button 
-                onClick={() => handleGenerateSummary(false)}
-                disabled={status !== 'idle'}
-                className={`p-2.5 rounded-xl transition-all border border-transparent ${
-                    status !== 'idle' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-aurora-purple hover:bg-white hover:border-aurora-purple/20 hover:shadow-sm'
-                }`}
-                title="生成今日日结"
-            >
-                <ScrollText size={20} />
-            </button>
-            <button 
-                onClick={() => setShowHistory(true)}
-                className="p-2.5 text-slate-500 hover:text-aurora-green hover:bg-white hover:border-aurora-green/20 border border-transparent rounded-xl transition-all hover:shadow-sm"
-                title="历史日记"
-            >
-                <History size={20} />
-            </button>
+      <header className="bg-white/60 backdrop-blur-xl sticky top-0 z-10 border-b border-white/40">
+        <div className="max-w-2xl mx-auto w-full px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+            <div className="bg-gradient-aurora text-white p-2.5 rounded-xl shadow-lg shadow-aurora-purple/20">
+                <Sparkles size={20} />
+            </div>
+            <div>
+                <h1 className="font-bold text-slate-800 text-lg leading-tight tracking-tight font-sans">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-aurora-purple to-aurora-green">SparkLog</span>
+                </h1>
+                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">AI Fragment Diary</p>
+            </div>
+            </div>
+            <div className="flex gap-2">
+                <button 
+                    onClick={handleClearChat}
+                    disabled={status !== 'idle' || messages.length <= 1}
+                    className={`p-2.5 rounded-xl transition-all border border-transparent ${
+                        status !== 'idle' || messages.length <= 1 
+                        ? 'text-slate-300 cursor-not-allowed' 
+                        : 'text-slate-400 hover:text-red-500 hover:bg-white hover:border-red-100 hover:shadow-sm'
+                    }`}
+                    title="清空当前对话"
+                >
+                    <Eraser size={20} />
+                </button>
+                <div className="w-px h-8 bg-slate-200 mx-1 self-center"></div>
+                <button 
+                    onClick={() => handleGenerateSummary(false)}
+                    disabled={status !== 'idle'}
+                    className={`p-2.5 rounded-xl transition-all border border-transparent ${
+                        status !== 'idle' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-aurora-purple hover:bg-white hover:border-aurora-purple/20 hover:shadow-sm'
+                    }`}
+                    title="生成今日日结"
+                >
+                    <ScrollText size={20} />
+                </button>
+                <button 
+                    onClick={() => setShowHistory(true)}
+                    className="p-2.5 text-slate-500 hover:text-aurora-green hover:bg-white hover:border-aurora-green/20 border border-transparent rounded-xl transition-all hover:shadow-sm"
+                    title="历史日记"
+                >
+                    <History size={20} />
+                </button>
+            </div>
         </div>
       </header>
 
-      {/* Chat Area */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth space-y-2">
-        {messages.map(msg => (
-          <ChatMessage 
-            key={msg.id} 
-            message={msg} 
-            onDelete={handleDeleteMessage}
-          />
-        ))}
-        
-        {status === 'thinking' && (
-           <div className="flex items-center gap-2 text-slate-400 text-xs ml-5 mb-4 animate-pulse font-mono bg-white/40 inline-block px-3 py-1 rounded-full border border-white/50">
-              <Sparkles size={12} className="text-aurora-purple" />
-              <span>Thinking...</span>
-           </div>
-        )}
-        
-        {status === 'generating_summary' && (
-           <div className="flex items-center gap-2 text-aurora-green text-xs ml-5 mb-4 animate-pulse font-mono bg-white/40 inline-block px-3 py-1 rounded-full border border-white/50">
-              <ScrollText size={12} />
-              <span>Generating Summary...</span>
-           </div>
-        )}
+      {/* Chat Area - Full Width Container for better scrolling */}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden w-full scroll-smooth">
+        <div className="max-w-2xl mx-auto w-full px-4 py-6 space-y-2">
+            {messages.map(msg => (
+            <ChatMessage 
+                key={msg.id} 
+                message={msg} 
+                onDelete={handleDeleteMessage}
+            />
+            ))}
+            
+            {status === 'thinking' && (
+            <div className="flex items-center gap-2 text-slate-400 text-xs ml-5 mb-4 animate-pulse font-mono bg-white/40 inline-block px-3 py-1 rounded-full border border-white/50">
+                <Sparkles size={12} className="text-aurora-purple" />
+                <span>Thinking...</span>
+            </div>
+            )}
+            
+            {status === 'generating_summary' && (
+            <div className="flex items-center gap-2 text-aurora-green text-xs ml-5 mb-4 animate-pulse font-mono bg-white/40 inline-block px-3 py-1 rounded-full border border-white/50">
+                <ScrollText size={12} />
+                <span>Generating Summary...</span>
+            </div>
+            )}
 
-        <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
+        </div>
       </main>
 
       {/* Input */}
