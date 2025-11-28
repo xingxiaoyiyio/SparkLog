@@ -252,13 +252,17 @@ export default function App() {
     const endOfDay = new Date(now.setHours(23, 59, 59, 999));
 
     // Filter messages STRICTLY for today (00:00 - 23:59)
-    const userMessages = messages.filter(m => {
+    // We capture BOTH user and model messages to give context to the summary
+    const todayMessages = messages.filter(m => {
         const mDate = new Date(m.timestamp);
-        return m.role === Role.USER && mDate >= startOfDay && mDate <= endOfDay;
+        return mDate >= startOfDay && mDate <= endOfDay;
     });
+
+    // Check if there are any user messages today
+    const hasUserContent = todayMessages.some(m => m.role === Role.USER);
     
     // If no user messages today
-    if (userMessages.length === 0) {
+    if (!hasUserContent) {
         if (!isAutoTrigger) {
             const noRecordMsg = {
                 id: Date.now().toString(),
@@ -284,12 +288,12 @@ export default function App() {
     }
 
     try {
-        // 1. Generate JSON Summary from Gemini
-        const aiData = await geminiService.generateDailySummary();
+        // 1. Generate JSON Summary from Gemini - PASSING THE FULL CONTEXT
+        const aiData = await geminiService.generateDailySummary(todayMessages);
 
         // 2. Inject Raw User Logs locally (Filtering out the trigger words)
-        const rawLogs = userMessages
-            .filter(m => !m.text.includes("日结") && !m.text.includes("今日总结"))
+        const rawLogs = todayMessages
+            .filter(m => m.role === Role.USER && !m.text.includes("日结") && !m.text.includes("今日总结"))
             .map(m => m.text);
 
         const finalData: DailySummaryData = {

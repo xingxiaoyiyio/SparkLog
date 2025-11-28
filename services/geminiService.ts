@@ -1,5 +1,5 @@
 import { GoogleGenAI, Chat, Type } from "@google/genai";
-import { DailySummaryData, GroundingSource } from "../types";
+import { DailySummaryData, GroundingSource, Message, Role } from "../types";
 
 // Safely retrieve API Key to prevent "ReferenceError: process is not defined" in browser environments
 const getApiKey = () => {
@@ -117,27 +117,37 @@ class GeminiService {
   }
 
   // Trigger the Daily Wrap Up specifically
-  async generateDailySummary(): Promise<DailySummaryData> {
+  // Accepts a history of messages to ensure context is preserved even after refresh
+  async generateDailySummary(messages: Message[]): Promise<DailySummaryData> {
     if (!API_KEY) {
         throw new Error("API Key Missing");
     }
 
-    const chat = this.getChat();
-    
+    // Convert message history to a text transcript for the model
+    // This ensures the model sees the full conversation even if the internal chat session was reset
+    const transcript = messages
+        .map(m => `${m.role === Role.USER ? '用户' : 'SparkLog'}: ${m.text}`)
+        .join('\n');
+
     // Prompt engineered to force specific JSON structure and Chinese content
     // Note: fragmentLog is removed from generation as we will use local history
     const prompt = `
     🔴 系统指令：立即执行【今日日结】任务。
     
-    回顾我们今天所有的对话内容，生成一份结构化的日记总结。
+    以下是今天的完整对话记录：
+    ====================
+    ${transcript}
+    ====================
+    
+    请根据上述对话内容，生成一份结构化的日记总结。
     
     要求：
     1. 语言必须是**中文**。
     2. 严格按照下方的 JSON 格式返回。
-    3. **stats (数据统计)**：请仔细分析对话，如果有提到具体的花费（金额）、数量（如见了3个客户、跑了5公里、读了2本书），请自动汇总计算。如果没有数字，此项可以为空数组。
-    4. **highlight (今日高光)**：3-5 个具体的点，简短有力。
+    3. **stats (数据统计)**：请仔细分析对话，如果有提到具体的花费（金额）、数量（如见了3个客户、跑了5公里、读了2本书），请自动汇总计算。如果没有数字，此项必须为空数组 []。
+    4. **highlight (今日高光)**：3-5 个具体的点，简短有力，必须基于对话内容，不要编造。
     5. **moodEmoji**：选择一个最能代表今天心情的 Emoji。
-    6. **moodColor**：选择一个代表今天心情的颜色 Hex 代码 (例如 #FF5733)。
+    6. **moodColor**：选择一个代表今天心情的颜色 Hex 代码 (必须是有效的颜色代码，例如 #FF5733)。
     
     JSON 结构定义：
     {
@@ -154,8 +164,11 @@ class GeminiService {
     `;
 
     try {
-      const result = await chat.sendMessage({
-        message: prompt,
+      // Use generateContent (stateless) instead of chat.sendMessage (stateful)
+      // This avoids polluting the ongoing chat session and ensures we use the explicit history provided
+      const result = await this.ai.models.generateContent({
+        model: this.modelId,
+        contents: prompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
