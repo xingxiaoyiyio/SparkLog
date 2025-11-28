@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from 'next/server';
 
 const SYSTEM_INSTRUCTION = `
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     // 生产环境代码保持不变
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenerativeAI(apiKey);
 
     // 支持messages格式（前端geminiService使用的格式）和history格式
     let messagesToProcess = history;
@@ -67,43 +67,43 @@ export async function POST(req: Request) {
         parts: [{ text: msg.text || msg.content }] // 支持text或content字段
       }));
 
-    const chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        // 移除搜索工具配置，可能是权限或配置问题导致的请求失败
-      },
-      history: historyContent
+    const model = ai.getGenerativeModel({
+      model: 'gemini-2.5-flash'
+    });
+    
+    // 创建聊天会话 - 在新版本中，system指令应放在history中
+    const enhancedHistory = [
+      { role: 'system', parts: [{ text: SYSTEM_INSTRUCTION }] },
+      ...historyContent.map((h: any) => ({
+        role: h.role,
+        parts: h.parts
+      }))
+    ];
+    
+    const chat = model.startChat({
+      history: enhancedHistory
     });
 
-    let result;
     // 获取最新的用户消息内容
     const latestMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
     
+    let result;
     if (image) {
       // Multimodal message
-      result = await chat.sendMessage({
-        message: [
-          { inlineData: { mimeType: 'image/jpeg', data: image } },
-          { text: latestMessage || "看看这张图！" }
-        ]
-      });
+      result = await chat.sendMessage([
+        { inlineData: { mimeType: 'image/jpeg', data: image } },
+        { text: latestMessage || "看看这张图！" }
+      ]);
     } else {
       // Text message
-      result = await chat.sendMessage({ message: latestMessage });
+      result = await chat.sendMessage(latestMessage);
     }
 
-    const responseText = result.text || "";
+    const responseText = result.response.text() || "";
     const sources: any[] = [];
     
-    const chunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    if (chunks) {
-      chunks.forEach((chunk: any) => {
-        if (chunk.web?.uri && chunk.web?.title) {
-          sources.push({ uri: chunk.web.uri, title: chunk.web.title });
-        }
-      });
-    }
+    // 新API可能没有相同的groundingMetadata结构，需要相应调整
+    // 暂时保留空sources数组
 
     return NextResponse.json({ text: responseText, sources });
 

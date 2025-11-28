@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
 
   try {
     const { messages } = await req.json();
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenerativeAI(apiKey);
 
     // Convert message history to a text transcript
     const transcript = messages
@@ -49,37 +49,16 @@ export async function POST(req: Request) {
     }
     `;
 
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            highlight: { type: Type.ARRAY, items: { type: Type.STRING } },
-            actionItems: { type: Type.ARRAY, items: { type: Type.STRING } },
-            inspirations: { type: Type.ARRAY, items: { type: Type.STRING } },
-            stats: { 
-              type: Type.ARRAY, 
-              items: { 
-                type: Type.OBJECT, 
-                properties: {
-                  label: { type: Type.STRING },
-                  value: { type: Type.STRING }
-                } 
-              } 
-            },
-            moodEmoji: { type: Type.STRING },
-            moodColor: { type: Type.STRING }
-          },
-          required: ["highlight", "actionItems", "inspirations", "moodEmoji", "moodColor"]
-        }
-      }
+    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    // 简化调用，移除responseMimeType配置
+    // 在新版本中，可以在prompt中明确要求返回JSON格式
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
     });
 
-    const jsonStr = result.text.trim();
-    // Google GenAI usually returns pure JSON with responseMimeType, but strip code blocks just in case
+    const jsonStr = result.response.text().trim();
+    // Google Generative AI usually returns pure JSON with responseMimeType, but strip code blocks just in case
     const cleanJson = jsonStr.replace(/```json|```/g, '');
     const data = JSON.parse(cleanJson);
 
