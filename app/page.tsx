@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -314,7 +315,7 @@ export default function Home() {
   if (!isInitialized) return null;
 
   return (
-    <div className="flex flex-col h-screen w-full bg-transparent relative border-x border-white/20 shadow-2xl">
+    <div className="flex flex-col h-full w-full bg-transparent relative border-x border-white/20 shadow-2xl">
       <header className="bg-white/60 backdrop-blur-xl sticky top-0 z-10 border-b border-white/40">
         <div className="max-w-2xl mx-auto w-full px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -364,7 +365,7 @@ export default function Home() {
       </header>
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden w-full scroll-smooth">
-        <div className="max-w-2xl mx-auto w-full px-4 py-6 space-y-2">
+        <div className="max-w-2xl mx-auto w-full px-4 py-6 pb-32 space-y-2">
           {messages.map(msg => (
             <ChatMessage 
               key={msg.id} 

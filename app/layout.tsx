@@ -16,7 +16,7 @@ export default function RootLayout({
       <head>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
       </head>
-      <body className="text-slate-800 antialiased overflow-hidden h-screen selection:bg-aurora-purpleLight selection:text-aurora-purple">
+      <body className="text-slate-800 antialiased overflow-hidden h-dvh selection:bg-aurora-purpleLight selection:text-aurora-purple">
         {children}
       </body>
     </html>
