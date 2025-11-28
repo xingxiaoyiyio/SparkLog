@@ -1,1 +1,0 @@
-// This file is legacy and should be deleted in the Next.js environment. Please rely on app/layout.tsx and app/page.tsx

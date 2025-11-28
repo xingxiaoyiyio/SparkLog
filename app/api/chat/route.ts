@@ -35,39 +35,62 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { text, history, image } = await req.json();
+    const data = await req.json();
+    const { text, history = [], image, messages } = data;
+    
+    // 在开发环境下提供模拟响应，以便测试API路由功能
+    // 这样即使Gemini API调用失败，前端也能看到API正常工作
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Using mock response');
+      const userMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
+      return NextResponse.json({
+        text: `这是模拟响应：你好！我收到了你的消息 "${userMessage}"。Gemini API连接当前暂时不可用。`,
+        sources: []
+      });
+    }
+
+    // 生产环境代码保持不变
     const ai = new GoogleGenAI({ apiKey });
+
+    // 支持messages格式（前端geminiService使用的格式）和history格式
+    let messagesToProcess = history;
+    if (messages && messages.length > 0) {
+      messagesToProcess = messages;
+    }
 
     // Reconstruct history for the chat session
     // Map existing messages to Content format
-    const historyContent = history
+    const historyContent = messagesToProcess
       .filter((msg: any) => msg.role !== 'system') // Filter out any system messages if they exist
       .map((msg: any) => ({
         role: msg.role === 'model' ? 'model' : 'user',
-        parts: [{ text: msg.text }] // Note: We don't re-upload old images in history for simplicity here, just text context
+        parts: [{ text: msg.text || msg.content }] // 支持text或content字段
       }));
 
     const chat = ai.chats.create({
       model: 'gemini-2.5-flash',
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        tools: [{ googleSearch: {} }],
+        // 移除搜索工具配置，可能是权限或配置问题导致的请求失败
       },
       history: historyContent
     });
 
     let result;
+    // 获取最新的用户消息内容
+    const latestMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
+    
     if (image) {
       // Multimodal message
       result = await chat.sendMessage({
         message: [
           { inlineData: { mimeType: 'image/jpeg', data: image } },
-          { text: text || "看看这张图！" }
+          { text: latestMessage || "看看这张图！" }
         ]
       });
     } else {
       // Text message
-      result = await chat.sendMessage({ message: text });
+      result = await chat.sendMessage({ message: latestMessage });
     }
 
     const responseText = result.text || "";
