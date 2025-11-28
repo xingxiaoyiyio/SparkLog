@@ -11,6 +11,23 @@ interface ChatMessageProps {
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) => {
   const isUser = message.role === Role.USER;
 
+  // Auto-linkify user text if no markdown links detected
+  // This ensures raw URLs pasted by the user become clickable
+  const formattedText = React.useMemo(() => {
+    if (!isUser) return message.text;
+    
+    // If text already contains markdown links (e.g. [title](url)), assume user (or system) formatted it intentionally
+    if (/\[.*?\]\(.*?\)/.test(message.text)) return message.text;
+
+    // Replace raw URLs with markdown links
+    return message.text.replace(/(https?:\/\/[^\s]+)/g, (match) => {
+        // Strip common trailing punctuation from URL to avoid including "." or "," in the link
+        const url = match.replace(/[.,;!?)]+$/, '');
+        const suffix = match.slice(url.length);
+        return `[${url}](${url})${suffix}`;
+    });
+  }, [message.text, isUser]);
+
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-fade-in-up group`}>
       <div className={`flex max-w-[95%] md:max-w-[80%] gap-3 items-end ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -47,10 +64,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
                     <div className={`markdown-content break-words break-all overflow-wrap-anywhere ${isUser ? 'text-white' : 'text-slate-700'}`}>
                     <ReactMarkdown 
                         components={{
-                            a: ({node, ...props}) => <a {...props} className={`underline ${isUser ? 'text-white/90' : 'text-aurora-purple'} break-all`} target="_blank" rel="noopener noreferrer" />
+                            a: ({node, ...props}) => (
+                                <a 
+                                    {...props} 
+                                    className={`underline ${isUser ? 'text-white/90 hover:text-white' : 'text-aurora-purple hover:text-aurora-purple/80'} break-all cursor-pointer transition-opacity`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                />
+                            )
                         }}
                     >
-                        {message.text}
+                        {formattedText}
                     </ReactMarkdown>
                     </div>
                 </div>
@@ -64,7 +88,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
                                 href={source.uri}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-1.5 text-[10px] bg-white/60 border border-white text-slate-500 px-2 py-1.5 rounded-md hover:border-aurora-green hover:text-aurora-green transition-colors shadow-sm max-w-full"
+                                className="flex items-center gap-1.5 text-[10px] bg-white/60 border border-white text-slate-500 px-2 py-1.5 rounded-md hover:border-aurora-green hover:text-aurora-green transition-colors shadow-sm max-w-full cursor-pointer"
                             >
                                 <LinkIcon size={10} className="flex-shrink-0" />
                                 <span className="truncate font-mono">{source.title}</span>
@@ -80,8 +104,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onDelete }) =
                 </div>
             </div>
 
-            {/* Delete Button - Fixed Positioning & Visibility */}
-            {/* Always visible on mobile (opacity-100), hidden on desktop until hover (md:opacity-0 md:group-hover:opacity-100) */}
+            {/* Delete Button */}
             <button
                 onClick={(e) => {
                     e.stopPropagation();
