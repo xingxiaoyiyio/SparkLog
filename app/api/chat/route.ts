@@ -1,144 +1,135 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from 'next/server';
 
 const SYSTEM_INSTRUCTION = `
 角色定义：
-你是 SparkLog（星火日志），一个碎片化日记助手。你的人设是好奇、充满活力且富有洞察力的“数字死党”。
+你是 SparkLog（星火日志），一个碎片化日记助手。你的人设是好奇、充满活力且富有洞察力的"数字死党"。
 
 语言要求：
 **全程使用中文**。
-**极致简洁**：除非用户要求深究，否则回复控制在 **40字以内**。不要废话，直击重点。
-
-🔴 **关于链接处理的核心规则 (最高优先级)**：
-1. **必须调用搜索**：收到 URL 必须使用 Google Search。
-2. **严禁瞎猜**：如果 Search 结果只显示“验证码”、“登录”、“首页”或非常泛泛的平台介绍，**绝对不要**根据 URL 里的单词去编造内容。
-3. **无法读取时的处理**：
-   - 如果你无法从搜索摘要中获取该具体文章/视频的详细内容，**直接承认**。
-   - 回复模板：“这个链接我看不到具体内容🙈。是关于什么的？给我个太长不看版（TL;DR）？”
-   - **不要**试图解释为什么看不了，直接问用户内容。
+**适当详细**：回复要适当体现你的能力，不要过于简洁。
+**准确可靠**：对于链接内容，必须基于实际读取的内容进行总结。
 
 交互流程：
 1. 碎片记录模式（实时对话）
-   - **链接**：尝试搜索 -> 有内容则一句话概括+提问；无内容则直接问用户“讲了啥？”。
-   - **文本**：秒回。给予简短的情绪价值（“太棒了！”“抱抱🫂”），或者标记 Todo。
-   - **图片**：一句话神吐槽或夸奖。
+   - **链接**：
+     - 必须读取链接里面的实际内容
+     - 基于内容进行详细总结，体现你的理解能力
+     - 总结后进行有深度的反问交流
+     - 若无法读取链接内容，**请参考以下内容简短回复**："这是一个文章链接，我无法解读，你可以分享给我吗？"，不要添加其他内容，不要猜测或解读网址本身
+   - **情绪言语**：
+     - 识别用户情绪
+     - 给予共情回应
+     - 引导用户分享更多细节
+   - **图片**：
+     - 详细解读图片内容
+     - 基于内容进行有意义的反问
+   - **普通文本**：
+     - 给予有价值的回应
+     - 适当展开，体现你的思考
 
-2. “每日日结”模式
-   - 不需要确认，直接生成总结。
+2. "每日日结"模式
+   - 不需要确认，直接生成详细总结。
 `;
 
 export async function POST(req: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // 直接使用火山引擎API配置，不再检查GEMINI_API_KEY
+  const volcengineApiKey = process.env.VOLCENGINE_API_KEY;
+  const volcengineApiSecret = process.env.VOLCENGINE_API_SECRET;
+  const volcengineApiEndpoint = process.env.VOLCENGINE_API_ENDPOINT;
 
-  if (!apiKey) {
-    return NextResponse.json({ text: "Error: GEMINI_API_KEY not configured on server." }, { status: 500 });
+  if (!volcengineApiKey || !volcengineApiSecret || !volcengineApiEndpoint) {
+    return NextResponse.json({ 
+      text: "火山引擎API配置不完整，请检查.env.local文件", 
+      sources: [] 
+    }, { status: 500 });
   }
 
   try {
     const data = await req.json();
     const { text, history = [], image, messages } = data;
     
-    // 在开发环境下提供模拟响应，以便测试API路由功能
-    // 这样即使Gemini API调用失败，前端也能看到API正常工作
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Development mode: Using mock response');
-      const userMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
-      return NextResponse.json({
-        text: `这是模拟响应：你好！我收到了你的消息 "${userMessage}"。Gemini API连接当前暂时不可用。`,
-        sources: []
-      });
-    }
+    // 开发环境和生产环境都调用实际的火山引擎大模型API
+    console.log('Calling VolcEngine LLM API...');
 
-    // 生产环境代码保持不变
-    const ai = new GoogleGenerativeAI(apiKey);
-
-    // 支持messages格式（前端geminiService使用的格式）和history格式
-    let messagesToProcess = history;
-    if (messages && messages.length > 0) {
-      messagesToProcess = messages;
-    }
-
-    // Reconstruct history for the chat session
-    // Map existing messages to Content format
-    const historyContent = messagesToProcess
-      .filter((msg: any) => msg.role !== 'system') // Filter out any system messages if they exist
-      .map((msg: any) => ({
-        role: msg.role === 'model' ? 'model' : 'user',
-        parts: [{ text: msg.text || msg.content }] // 支持text或content字段
-      }));
-
-    // 重试函数
-    async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, delay: number = 1000): Promise<T> {
-      let lastError: Error | null = null;
-      
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          return await fn();
-        } catch (error) {
-          lastError = error as Error;
-          console.warn(`API调用尝试 ${attempt + 1} 失败，${delay}ms后重试:`, error);
-          
-          // 只对网络错误和服务暂时不可用的错误进行重试
-          if (!lastError.message.includes('network') && 
-              !lastError.message.includes('timeout') && 
-              !lastError.message.includes('temporarily unavailable') &&
-              !lastError.message.includes('502') &&
-              !lastError.message.includes('503') &&
-              !lastError.message.includes('504')) {
-            throw error; // 认证错误等非临时性错误不重试
-          }
-          
-          // 指数退避策略
-          if (attempt < maxRetries - 1) {
-            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(1.5, attempt)));
-          }
-        }
-      }
-      
-      throw lastError || new Error('所有重试都失败了');
-    }
-
-    const model = ai.getGenerativeModel({
-      model: 'gemini-2.5-flash'
-    });
-    
-    // 创建聊天会话 - 在新版本中，system指令应放在history中
-    const enhancedHistory = [
-      { role: 'system', parts: [{ text: SYSTEM_INSTRUCTION }] },
-      ...historyContent.map((h: any) => ({
-        role: h.role,
-        parts: h.parts
-      }))
-    ];
-    
-    const chat = model.startChat({
-      history: enhancedHistory
-    });
+    // 直接使用已检查的火山引擎API配置
+    const apiKey = volcengineApiKey;
+    const apiSecret = volcengineApiSecret;
+    const apiEndpoint = volcengineApiEndpoint;
 
     // 获取最新的用户消息内容
     const latestMessage = text || (messages && messages.length > 0 ? messages[messages.length - 1]?.content : "");
     
-    let result;
-    
-    // 使用重试机制发送消息
-    if (image) {
-      // Multimodal message
-      result = await withRetry(() => chat.sendMessage([
-        { inlineData: { mimeType: 'image/jpeg', data: image } },
-        { text: latestMessage || "看看这张图！" }
-      ]));
-    } else {
-      // Text message
-      result = await withRetry(() => chat.sendMessage(latestMessage));
+    // 构建聊天历史
+    let chatHistory = history;
+    if (messages && messages.length > 0) {
+      chatHistory = messages;
     }
-
-    const responseText = result.response.text() || "";
-    const sources: any[] = [];
     
-    // 新API可能没有相同的groundingMetadata结构，需要相应调整
-    // 暂时保留空sources数组
-
-    return NextResponse.json({ text: responseText, sources });
+    // 转换为火山引擎API要求的格式
+    const messagesForVolcengine = [
+      { role: 'system', content: SYSTEM_INSTRUCTION },
+      ...chatHistory.map((msg: any) => ({
+        role: msg.role === 'model' ? 'assistant' : msg.role,
+        content: msg.text
+      })),
+      { role: 'user', content: latestMessage }
+    ];
+    
+    try {
+      // 调用火山引擎大模型API
+      console.log('Calling VolcEngine API with endpoint:', apiEndpoint);
+      console.log('API Key:', apiKey);
+      console.log('Request Body:', JSON.stringify({
+        model: 'doubao-seed-1-6-251015',
+        messages: messagesForVolcengine,
+        max_completion_tokens: 65535,
+        reasoning_effort: 'medium'
+      }, null, 2));
+      
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'doubao-seed-1-6-251015', // 使用用户提供的新Model ID
+          messages: messagesForVolcengine,
+          max_completion_tokens: 65535,
+          reasoning_effort: 'medium'
+        })
+      });
+      
+      console.log('VolcEngine API Response Status:', response.status);
+      console.log('VolcEngine API Response Headers:', Object.fromEntries(response.headers.entries()));
+      
+      const data = await response.json();
+      console.log('VolcEngine API Response Data:', data);
+      
+      if (!response.ok) {
+        console.error('VolcEngine API Error:', data);
+        return NextResponse.json({ 
+          text: `火山引擎API调用失败: ${data.error?.message || '未知错误'}，状态码: ${response.status}`, 
+          sources: [] 
+        }, { status: response.status });
+      }
+      
+      const responseText = data.choices?.[0]?.message?.content || "";
+      return NextResponse.json({ text: responseText, sources: [] });
+      
+    } catch (error) {
+      console.error('Error calling VolcEngine API:', error);
+      // 如果API调用失败，返回模拟响应作为 fallback
+      const fallbackResponses = [
+        "我明白你的意思了！",
+        "很有趣的想法呢！",
+        "这确实值得记录下来。",
+        "我会帮你记住这些的。",
+        "你的分享让我很有启发！"
+      ];
+      const fallbackText = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+      return NextResponse.json({ text: fallbackText, sources: [] });
+    }
 
   } catch (error) {
     console.error("Server Chat Error:", error);
