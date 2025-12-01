@@ -1,10 +1,7 @@
 {
   "name": "sparklog-next",
   "compatibility_date": "2024-12-01",
-  "pages": {
-    "output_dir": "out"
-  },
-  "vars": {
-    "NODE_VERSION": "20"
+  "assets": {
+    "directory": "./out"
   }
 }

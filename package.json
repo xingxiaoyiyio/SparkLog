@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "npx wrangler pages deploy out",
+    "deploy": "npx wrangler deploy --assets=./out",
     "build:cloudflare": "next build"
   },
   "dependencies": {
