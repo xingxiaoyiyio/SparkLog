@@ -1,5 +1,8 @@
 {
   "name": "sparklog-next",
   "compatibility_date": "2024-12-01",
-   "compatibility_flags": ["nodejs_compat"] // 启用 Node.js 兼容模式
+  "compatibility_flags": ["nodejs_compat"], // 启用 Node.js 兼容模式
+  "assets": {
+    "directory": ".vercel/output/static"
+  }
 }
