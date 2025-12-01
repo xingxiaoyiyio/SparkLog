@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "npx wrangler deploy --assets=./out",
+     "deploy": "npm run build:cloudflare && npx wrangler deploy",
     "build:cloudflare": "next build"
   },
   "dependencies": {
