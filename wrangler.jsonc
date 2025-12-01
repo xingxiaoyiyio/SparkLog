@@ -1,7 +1,4 @@
 {
   "name": "sparklog-next",
   "compatibility_date": "2024-12-01",
-  "assets": {
-    "directory": ".vercel/output/static"
-  }
 }
