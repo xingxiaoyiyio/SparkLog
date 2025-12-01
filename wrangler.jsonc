@@ -1,5 +1,5 @@
 {
-  "name": "sparklog-next",
+  "name": "sparklog",
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"], // 启用 Node.js 兼容模式
   "assets": {
