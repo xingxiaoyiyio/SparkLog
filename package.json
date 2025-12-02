@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "npm run build:cloudflare && npx wrangler deploy .vercel/output/functions/_middleware.js --assets=.vercel/output/static --name=sparklog-next",
+    "deploy": "npm run build:cloudflare && npx wrangler deploy .vercel/output/static/_worker.js/index.js --assets=.vercel/output/static --name=sparklog",
     "build:cloudflare": "npx @cloudflare/next-on-pages"
   },
   "dependencies": {
